@@ -95,9 +95,11 @@ cast_messages:
 - Your target pattern dissipates
 - You make a .* gesture
 - You raise your (left|right) hand skyward
+- ^You raise your palms and face to the heavens
 - Flickering shadows tear away
 - You sense a Malediction
 - You release an accompaniment
+- ^You release a duet of elemental fire and water into your chanting
 - You roll your hands in an elliptical pattern
 - You (cup|wave|raise) your hand
 - You flicker your malevolent desires towards
@@ -164,6 +166,7 @@ cast_messages:
 - ^You cup your palms skyward to bask in.*$
 - ^Incited by the spell, your starlight aura
 - ^Cupping your palms skyward, you bask in a cascade.*$
+- ^Your mind latches onto something moving just under the surface of the air
 
 khri_preps:
 - With deep breaths
@@ -198,6 +201,8 @@ khri_preps:
 - Preparing your voice, you concentrate
 - Drawing upon your inner strength
 - You attempt to relax your mind from all of its meditative states
+- After a deep breath, your meditation bears fruit
+- Briefly shutting your eyes
 
 barb_abilities:
   Python:
@@ -529,6 +534,7 @@ spell_data:
     heavy: true
     mana: 30
     abbrev: BTN
+    prep_type: prepare
     mana_type: elemental
   Benediction:
     skill: Augmentation
@@ -1349,6 +1355,7 @@ spell_data:
     mana: 5
     abbrev: malediction
     harmless: true
+    expire: malevolent darkness wane
     mana_type: holy
   Manifest Force:
     skill: Warding

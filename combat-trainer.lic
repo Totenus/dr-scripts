@@ -192,7 +192,7 @@ class SetupProcess
 
     game_state.reset_action_count
 
-    if DRStats.moon_mage? && moon_used_to_summon_weapon.nil?
+    if DRStats.moon_mage? && !game_state.summoned_weapons.empty? && moon_used_to_summon_weapon.nil?
       echo('skipping summoned weapons because no moonblade available') if $debug_mode_ct
       weapon_training = weapon_training.reject { |skill, _| game_state.summoned_info(skill) }
     end
@@ -342,7 +342,11 @@ class LootProcess
     @arrange_all = skinning['arrange_all'] || false
     echo("  @arrange_all: #{@arrange_all}") if $debug_mode_ct
 
-    @arrange_count = skinning['arrange_count'] || 0
+    if @arrange_all
+      @arrange_count = 1
+    else
+      @arrange_count = skinning['arrange_count'] || 0
+    end
     echo("  @arrange_count: #{@arrange_count}") if $debug_mode_ct
 
     @tie_bundle = skinning['tie_bundle'] || false
@@ -481,6 +485,9 @@ class LootProcess
     when 'already in your inventory'
       if @gem_nouns.include?(item)
         bput('stow gem', 'You pick up', 'You get', 'You need a free hand', 'You just can\'t', 'push you over the item limit', 'You stop as you realize the .* is not yours', 'Stow what', 'already in your inventory')
+      elsif @box_nouns.include?(item)
+        item_reg = item.split.join('.*')
+        return stow_loot(DRRoom.room_objs.grep(/\b#{item_reg}$/).first.split.last(2).join(' '), game_state)
       else
         bput("stow other #{item}", 'You pick up', 'You get', 'You need a free hand', 'You just can\'t', 'push you over the item limit', 'You stop as you realize the .* is not yours', 'Stow what', 'already in your inventory')
       end
@@ -559,7 +566,7 @@ class LootProcess
     return false unless @ritual_type
     return false if game_state.necro_casting?
     return true if @ritual_type == 'cycle'
-    return true if @ritual_type == 'butcher'
+    return true if @ritual_type == 'butcher' && DRSkill.getxp('Thanatology') < 32
     return true if @ritual_type == 'dissect' && DRSkill.getxp('First Aid') < 32
     return true if @ritual_type == 'harvest' && DRSkill.getxp('Skinning') < 32
     return true if DRSkill.getxp('Thanatology') < 32
@@ -671,7 +678,6 @@ class LootProcess
     echo "Butchering the #{mob_noun}'s corpse!" if $debug_mode_ct
     echo ' Only butchering it once!' if $debug_mode_ct && @dissect_and_butcher && !@ritual_type.eql?('butcher')
 
-    do_necro_ritual(mob_noun, 'preserve', game_state)
     @equipment_manager.stow_weapon(game_state.weapon_name)
 
     loop do
@@ -2651,13 +2657,14 @@ class AttackProcess
   end
 
   def shoot_aimed(command, game_state)
-    case bput(command, 'isn\'t loaded', 'There is nothing', 'But your', /you (fire|poach|snipe) an? (?:.*\s)?(arrow|bolt|shard|rock|sphere|clump|coral|fist|holder|lump|patella|pellet|pulzone|quadrello|quill|stone|stopper|verretto) at/i, 'I could not find', 'with no effect and falls to the ground', 'Face what', 'How can you (poach|snipe)', 'you don\'t feel like fighting right now', 'That weapon must be in your right hand to fire')
+    case bput(command, 'isn\'t loaded', 'There is nothing', 'But your', /you (fire|poach|snipe) an? (?:.*\s)?(arrows?|bolt|shard|rock|sphere|clump|coral|fist|holder|lump|patella|pellet|pulzone|quadrello|quill|stone|stopper|verretto).* at/i, 'I could not find', 'with no effect and falls to the ground', 'Face what', 'How can you (poach|snipe)', 'you don\'t feel like fighting right now', 'That weapon must be in your right hand to fire')
     when /How can you (poach|snipe)/
       shoot_aimed('shoot', game_state)
-    when /you (fire|poach|snipe) an? (?:.*\s)?(arrow|bolt|shard|rock|sphere|clump|coral|fist|holder|lump|patella|pellet|pulzone|quadrello|quill|stone|stopper|verretto) at/i
+    when /you (fire|poach|snipe) an? (?:.*\s)?(arrows?|bolt|shard|rock|sphere|clump|coral|fist|holder|lump|patella|pellet|pulzone|quadrello|quill|stone|stopper|verretto).* at/i
       game_state.action_taken
       ammo = Regexp.last_match(2)
       bput("stow my #{ammo}", 'You pick up', 'Stow what')
+      bput("stow my #{ammo}", 'You pick up', 'Stow what') if game_state.dual_load?
     when 'you don\'t feel like fighting right now', 'That weapon must be in your right hand to fire'
       pause 1
       shoot_aimed(command, game_state)
@@ -3122,6 +3129,7 @@ class GameState
     echo("  @attack_overrides: #{@attack_overrides}") if $debug_mode_ct
 
     @aiming_trainables = settings.aiming_trainables & settings.weapon_training.keys # Intersection of the arrays to make sure weapons are available in the hunt
+    @aiming_trainables.push('Tactics') if settings.aiming_trainables.include?('Tactics') # add back in tactics
     echo("  @aiming_trainables: #{@aiming_trainables}") if $debug_mode_ct
 
     @using_light_crossbow = settings.using_light_crossbow
@@ -3609,7 +3617,7 @@ class GameState
     DRSkill.getxp('Stealth') < @combat_training_abilities_target
   end
 
-  attr_reader :aiming_trainables
+  attr_reader :aiming_trainables, :summoned_weapons
 
   private
 
@@ -3664,7 +3672,7 @@ class GameState
   end
 
   attr_accessor :clean_up_step, :current_weapon_skill, :target_weapon_skill, :no_skins, :constructs, :no_stab_mobs, :no_loot, :dancing, :retreating, :action_count, :charges, :aim_queue, :dance_queue, :analyze_combo_array
-  attr_reader :dance_skill, :target_action_count, :dance_threshold, :retreat_threshold, :summoned_weapons, :target_increment, :stances, :weapons_to_train, :use_stealth_attacks, :ambush, :backstab, :charged_maneuvers, :fatigue_regen_threshold, :aim_fillers, :aim_fillers_stealth, :dance_actions, :dance_actions_stealth, :ignored_npcs, :dual_load, :summoned_weapons_element, :summoned_weapons_ingot, :cambrinth, :stored_cambrinth, :cambrinth_cap, :use_weak_attacks, :dedicated_camb_use, :use_barb_combos, :balance_regen_threshold
+  attr_reader :dance_skill, :target_action_count, :dance_threshold, :retreat_threshold, :target_increment, :stances, :weapons_to_train, :use_stealth_attacks, :ambush, :backstab, :charged_maneuvers, :fatigue_regen_threshold, :aim_fillers, :aim_fillers_stealth, :dance_actions, :dance_actions_stealth, :ignored_npcs, :dual_load, :summoned_weapons_element, :summoned_weapons_ingot, :cambrinth, :stored_cambrinth, :cambrinth_cap, :use_weak_attacks, :dedicated_camb_use, :use_barb_combos, :balance_regen_threshold
 end
 
 before_dying do
